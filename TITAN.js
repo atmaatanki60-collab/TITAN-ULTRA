@@ -32,7 +32,6 @@ if (cluster.isMaster) {
         const proxy = proxies[Math.floor(Math.random() * proxies.length)].split(':');
         
         // Step 1: Net Socket setup with Bypass logic
-        const net = require('net');
 
 /**
  * Powerful Socket Launcher
@@ -137,7 +136,6 @@ setInterval(() => {
         const cluster = require('cluster');
 const os = require('os');
 const crypto = require('crypto');
-const net = require('net');
 
 if (cluster.isMaster) {
     const numCPUs = os.cpus().length;
